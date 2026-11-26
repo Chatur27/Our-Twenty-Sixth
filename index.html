@@ -338,6 +338,9 @@ html,body{overflow-x:clip}.site-shell{overflow:clip}.scene,main{min-width:0}.gif
 .portal-stage.is-open .ornament-top{opacity:.65}
 @media(max-width:780px){.portal-stage{height:226px;min-height:226px}.portal-arch{width:155px;height:204px}.portal-love-line{font-size:12px;bottom:12%}.enchanted-heart{top:17%}.portal-caption{letter-spacing:.13em;font-size:8px}.door-handle{font-size:15px}}
 @media(prefers-reduced-motion:reduce){.is-open .portal-heart-line{stroke-dashoffset:0}.is-open .portal-couple,.is-open .portal-love-line{opacity:1;transform:none}.portal-petals{display:none}}
+/* v6.4 music state */
+#sound-toggle[aria-pressed="true"] #sound-icon{text-shadow:0 0 9px #e9c98b88}
+#sound-toggle[aria-pressed="false"] #sound-icon{opacity:.5}
 </style>
 <meta content="noindex,nofollow,noarchive" name="robots"/></head>
 <body>
@@ -355,7 +358,7 @@ html,body{overflow-x:clip}.site-shell{overflow:clip}.scene,main{min-width:0}.gif
 </a>
 <div aria-hidden="true" class="topbar-center">OUR TWENTY-SIXTH <span class="mini-star">✧</span> A LITTLE LOVE STORY</div>
 <div class="top-actions">
-<button aria-label="Turn sound on" aria-pressed="false" class="icon-btn" id="sound-toggle" title="Sound on/off" type="button"><span aria-hidden="true" id="sound-icon">♫</span><span class="desktop-label" id="sound-label">SOUND OFF</span></button>
+<button aria-label="Turn music off" aria-pressed="true" class="icon-btn" id="sound-toggle" title="Music on/off" type="button"><span aria-hidden="true" id="sound-icon">♫</span><span class="desktop-label" id="sound-label">MUSIC ON</span></button>
 <button aria-controls="customise-panel" aria-expanded="false" class="outline-small" hidden="" id="customise-toggle" type="button">PERSONALISE <span aria-hidden="true">↗</span></button>
 </div>
 </header>
@@ -494,7 +497,7 @@ window.MOMENT_CONTENT = {"brand":"Our Twenty-Sixth","default":{"recipient":"Sara
   let state = {...cfg.default};
   let chapter = 'entrance';
   let discovered = new Set();
-  let musicEnabled = false;
+  let musicEnabled = true;
   let audioContext = null;
   let activeMemory = null;
   let modalFocusReturn = null;
@@ -504,18 +507,85 @@ window.MOMENT_CONTENT = {"brand":"Our Twenty-Sixth","default":{"recipient":"Sara
 
   function announce(message){$('#announcer').textContent = message;}
   function toast(message){const el=$('#toast');el.textContent=message;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,3200);}
+  /* Original instrumental: a gentle eight-bar piano-style waltz, no external audio. */
+  let soundtrackTimer=null, soundtrackBus=null, audioMaster=null, soundtrackTime=0, soundtrackBar=0;
+  let soundtrackVoices=new Set();
+  const loveScore=[
+    {chord:[48,55,60,64,67],melody:[76,74,72,67,69,72]},
+    {chord:[45,52,57,60,64],melody:[76,72,71,69,67,69]},
+    {chord:[41,48,53,57,60],melody:[72,74,76,77,76,72]},
+    {chord:[43,50,55,59,62],melody:[74,71,67,69,71,74]},
+    {chord:[48,55,60,64,67],melody:[79,76,74,72,74,76]},
+    {chord:[40,47,52,55,59],melody:[71,74,76,74,71,67]},
+    {chord:[41,48,53,57,60],melody:[69,72,77,76,74,72]},
+    {chord:[43,50,55,60,62],melody:[71,69,67,74,72,null]}
+  ];
+  function ensureAudio(){
+    const Audio=window.AudioContext||window.webkitAudioContext;
+    if(!Audio)return false;
+    if(!audioContext||audioContext.state==='closed'){audioContext=new Audio();audioMaster=audioContext.createGain();audioMaster.gain.value=musicEnabled?1:0;audioMaster.connect(audioContext.destination);}
+    if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
+    return true;
+  }
+  function pianoNote(midi,t,velocity,duration){
+    if(midi==null||!soundtrackBus)return;
+    const ctx=audioContext, hz=440*Math.pow(2,(midi-69)/12);
+    const env=ctx.createGain();env.gain.setValueAtTime(.0001,t);env.gain.exponentialRampToValueAtTime(velocity,t+.025);env.gain.exponentialRampToValueAtTime(velocity*.27,t+.25);env.gain.exponentialRampToValueAtTime(.0001,t+duration);env.connect(soundtrackBus);
+    [1,2,3].forEach((harm,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=hz*harm;g.gain.value=[1,.22,.07][i];o.connect(g);g.connect(env);soundtrackVoices.add(o);
+      o.onended=()=>{soundtrackVoices.delete(o);o.disconnect();g.disconnect();if(i===0)env.disconnect();};
+      o.start(t);o.stop(t+duration+.03);
+    });
+  }
+  function scheduleMusic(){
+    if(!musicEnabled||!soundtrackBus||audioContext.state!=='running')return;
+    const now=audioContext.currentTime,beat=.62,bar=beat*3;
+    if(soundtrackTime<now-.2)soundtrackTime=now+.05;
+    while(soundtrackTime<now+.25){
+      const t=soundtrackTime,p=loveScore[soundtrackBar%loveScore.length];
+      pianoNote(p.chord[0],t,.09,2.1);
+      [1,2,3,2,4,3].forEach((n,i)=>pianoNote(p.chord[n],t+i*beat/2,.055,1.5));
+      p.melody.forEach((n,i)=>pianoNote(n,t+i*beat/2,.073,1.25));
+      soundtrackBar++;soundtrackTime+=bar;
+    }
+  }
+  function startMusic(){
+    if(!musicEnabled)return;
+    try{
+      if(!ensureAudio())return;
+      audioMaster.gain.setTargetAtTime(1,audioContext.currentTime,.07);
+      if(soundtrackTimer!==null)return;
+      soundtrackBus=audioContext.createGain();soundtrackBus.gain.value=.42;soundtrackBus.connect(audioMaster);
+      soundtrackTime=audioContext.currentTime+.08;soundtrackBar=0;
+      scheduleMusic();soundtrackTimer=setInterval(scheduleMusic,120);
+    }catch(e){console.debug('Music unavailable',e);}
+  }
+  function stopMusic(){
+    if(soundtrackTimer!==null){clearInterval(soundtrackTimer);soundtrackTimer=null;}
+    if(audioContext&&soundtrackBus){
+      const old=soundtrackBus;old.gain.setTargetAtTime(0,audioContext.currentTime,.04);
+      soundtrackVoices.forEach(o=>{try{o.stop(audioContext.currentTime+.16);}catch(e){}});
+      setTimeout(()=>{try{old.disconnect();}catch(e){}},250);
+    }
+    soundtrackBus=null;soundtrackVoices.clear();
+  }
+  function syncMusicButton(){
+    $('#sound-label').textContent=musicEnabled?'MUSIC ON':'MUSIC OFF';
+    $('#sound-icon').textContent=musicEnabled?'♫':'♪';
+    $('#sound-toggle').setAttribute('aria-pressed',String(musicEnabled));
+    $('#sound-toggle').setAttribute('aria-label',musicEnabled?'Turn music off':'Turn music on');
+  }
   function chime(notes=[440,660,880]){
     if(!musicEnabled)return;
     try {
-      audioContext = audioContext || new (window.AudioContext||window.webkitAudioContext)();
-      if(audioContext.state==='suspended') audioContext.resume();
+      if(!ensureAudio())return;
       notes.forEach((hz,i)=>{
         const oscillator=audioContext.createOscillator();const volume=audioContext.createGain();
         oscillator.type='sine';oscillator.frequency.setValueAtTime(hz,audioContext.currentTime+i*.085);
         volume.gain.setValueAtTime(.00001,audioContext.currentTime+i*.085);
         volume.gain.exponentialRampToValueAtTime(.065,audioContext.currentTime+i*.085+.025);
         volume.gain.exponentialRampToValueAtTime(.00001,audioContext.currentTime+i*.085+.54);
-        oscillator.connect(volume);volume.connect(audioContext.destination);
+        oscillator.connect(volume);volume.connect(audioMaster);
         oscillator.start(audioContext.currentTime+i*.085);oscillator.stop(audioContext.currentTime+i*.085+.55);
       });
     }catch(err){console.debug('Optional audio unavailable',err);}
@@ -541,11 +611,13 @@ window.MOMENT_CONTENT = {"brand":"Our Twenty-Sixth","default":{"recipient":"Sara
     window.scrollTo({top:0,behavior:'instant'});
   }
   function resetExperience(){
+    transitionToken++;clearTimeout(toastTimer);$('#toast').hidden=true;$('#memory-overlay').hidden=true;$('#customise-overlay').hidden=true;activeMemory=null;modalFocusReturn=null;
     discovered.clear();$('.memory-card').forEach(el=>{el.classList.remove('discovered');el.querySelector('.memory-action').textContent='Discover ↗';});$('#memory-count').textContent='0 OF 3 MEMORIES DISCOVERED';$('#memories-next').disabled=true;
     hideBirdMagic();$('#gift-object').classList.remove('opening');$('#open-box-button').disabled=false;$('#open-box-button').querySelector('span').textContent='OPEN MY MAGIC MEMORY BOX';
     $('#portal-stage')?.classList.remove('is-open');$('.portal-stage')?.classList.remove('is-open');
     $('#envelope-shell').classList.remove('open');$('#seal-button').disabled=false;$('#letter-next').disabled=true;letterOpened=false; $('.letter-aside p').textContent='Break the heart seal. This one is only for you.';
-    stopNarration();resetSecret();resetView();changeScene('entrance');
+    stopNarration();resetSecret();dragId=null;turntable.classList.remove('dragging');resetView();changeScene('entrance');
+    stopMusic();if(musicEnabled)startMusic();
   }
   function currentMemories(){return (cfg.occasionMemories && cfg.occasionMemories[state.occasion]) || cfg.memories;}
   function bindText(){
@@ -589,6 +661,7 @@ window.MOMENT_CONTENT = {"brand":"Our Twenty-Sixth","default":{"recipient":"Sara
   }
   function closeAllLayers(){if(!$('#memory-overlay').hidden)closeMemory();if(!$('#customise-overlay').hidden)showCustomise(false);$('#chapter-menu').hidden=true;$('#chapter-menu-button').setAttribute('aria-expanded','false');}
   function openPortal(){
+    startMusic();
     const button=$('#enter-button'),stage=$('.portal-stage');
     if(stage.classList.contains('reveal-ready')){chime([523,659,784]);changeScene('vault');return;}
     if(stage.classList.contains('is-open'))return;
@@ -639,9 +712,10 @@ window.MOMENT_CONTENT = {"brand":"Our Twenty-Sixth","default":{"recipient":"Sara
   $('#seal-button').addEventListener('click',openLetter);
   $('#read-letter-button').addEventListener('click',toggleNarration);
   $('#letter-next').addEventListener('click',()=>{chime([392,523,698,880]);changeScene('finale');});
-  $('#replay-button').addEventListener('click',resetExperience);
+  $('#replay-button').addEventListener('click',()=>{try{resetExperience();}catch(error){console.error('Replay reset failed; reloading',error);window.location.reload();}});
   $('#copy-brief-button').addEventListener('click',copyOrderBrief);
-  $('#sound-toggle').addEventListener('click',()=>{musicEnabled=!musicEnabled;$('#sound-label').textContent=musicEnabled?'SOUND ON':'SOUND OFF';$('#sound-toggle').setAttribute('aria-pressed',String(musicEnabled));$('#sound-toggle').setAttribute('aria-label',musicEnabled?'Turn sound off':'Turn sound on');if(musicEnabled)chime([440,660,880]);});
+  $('#sound-toggle').addEventListener('click',()=>{musicEnabled=!musicEnabled;syncMusicButton();if(musicEnabled){startMusic();}else{if(audioContext&&audioMaster)audioMaster.gain.setTargetAtTime(0,audioContext.currentTime,.035);stopMusic();}});
+  document.addEventListener('click',event=>{if(musicEnabled&&!event.target.closest('#sound-toggle'))startMusic();},true);
   $('#customise-toggle').addEventListener('click',()=>showCustomise(true));
   $('#customise-close').addEventListener('click',()=>showCustomise(false));
   $('#customise-overlay [data-close-customise]').addEventListener('click',()=>showCustomise(false));
@@ -682,7 +756,7 @@ window.MOMENT_CONTENT = {"brand":"Our Twenty-Sixth","default":{"recipient":"Sara
     $('#countdown-note').textContent=today?'Today is our 26th! Happy anniversary, my love. ♡ The next one is already waiting.':'Mauritius time · A little date to look forward to.';
   }
   updateCountdown();setInterval(updateCountdown,1000);
-  bindText();changeScene('entrance',false);
+  bindText();syncMusicButton();changeScene('entrance',false);
 })();
 
 </script></body>
