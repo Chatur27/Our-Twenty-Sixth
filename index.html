@@ -612,7 +612,7 @@ window.MOMENT_CONTENT = {"brand":"Our Twenty-Sixth","default":{"recipient":"Sara
   }
   function resetExperience(){
     transitionToken++;clearTimeout(toastTimer);$('#toast').hidden=true;$('#memory-overlay').hidden=true;$('#customise-overlay').hidden=true;activeMemory=null;modalFocusReturn=null;
-    discovered.clear();$('.memory-card').forEach(el=>{el.classList.remove('discovered');el.querySelector('.memory-action').textContent='Discover ↗';});$('#memory-count').textContent='0 OF 3 MEMORIES DISCOVERED';$('#memories-next').disabled=true;
+    discovered.clear();$$('.memory-card').forEach(el=>{el.classList.remove('discovered');el.querySelector('.memory-action').textContent='Discover ↗';});$('#memory-count').textContent='0 OF 3 MEMORIES DISCOVERED';$('#memories-next').disabled=true;
     hideBirdMagic();$('#gift-object').classList.remove('opening');$('#open-box-button').disabled=false;$('#open-box-button').querySelector('span').textContent='OPEN MY MAGIC MEMORY BOX';
     $('#portal-stage')?.classList.remove('is-open');$('.portal-stage')?.classList.remove('is-open');
     $('#envelope-shell').classList.remove('open');$('#seal-button').disabled=false;$('#letter-next').disabled=true;letterOpened=false; $('.letter-aside p').textContent='Break the heart seal. This one is only for you.';
